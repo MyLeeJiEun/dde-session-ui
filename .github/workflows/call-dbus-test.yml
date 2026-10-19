@@ -1,0 +1,76 @@
+name: DBus interface test
+
+# dde-session-ui 的 DBus 接口测试(process 形态)。
+# 本仓是 14 个子项目的聚合仓,各自是独立可执行文件。被测物选
+# dde-blackwidget —— 本仓接口面最完整的导出服务:
+# org.deepin.dde.BlackScreen1 @ /org/deepin/dde/BlackScreen1
+# (7 个槽 + blackScreenVisible 查询)。
+#
+# 注意:main.cpp 里 w.setTimer() 默认 10 秒自退,用例必须在该窗口内完成
+# (实测整轮 0.01s 级)。Quit / quitDBusService 会注销服务并退出进程,
+# 因此放在用例序列末尾。
+#
+# 注意:仓内没有源码声明 XML(xml/ 下 17 个全是 dtk_add_dbus_interface
+# 生成的消费方客户端类),静态校验会如实 SKIP,故 check 不传 --strict。
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  dbus-interface:
+    runs-on: ubuntu-latest
+    container: linuxdeepin/deepin:crimson
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装构建依赖(照抄 debian/control Build-Depends)
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates git make cmake pkg-config build-essential g++ \
+            qt6-base-dev qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
+            qt6-svg-dev qt6-declarative-dev qt6-declarative-private-dev \
+            qt6-wayland-dev qt6-wayland-dev-tools qt6-wayland-private-dev \
+            qt6-l10n-tools qtchooser qmake6 \
+            libdtk6core-dev libdtk6core-bin libdtk6gui-dev libdtk6widget-dev \
+            libxcb-ewmh-dev libxcb1-dev libx11-dev libxext-dev \
+            libsystemd-dev systemd-dev systemd \
+            libgtest-dev libgmock-dev \
+            libdeepin-pw-check-dev libgio-qt-dev \
+            python3-pip python3-setuptools python3-wheel python3-yaml \
+            python3-dbus python3-gi python3-dbusmock \
+            deepin-desktop-schemas adwaita-icon-theme \
+            gdb
+
+      - name: 构建被测物
+        run: |
+          cmake -S . -B build-su -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-su --target dde-blackwidget -j"$(nproc)"
+          test -x build-su/dde-blackwidget/dde-blackwidget
+
+      - name: 安装 dbus-testing
+        env:
+          DBUS_TESTING_REPO: https://github.com/MyLeeJiEun/deepin-dbus-testing
+        run: |
+          git clone --depth 1 "${DBUS_TESTING_REPO}" /tmp/dbus-testing-src
+          pip install --break-system-packages --no-build-isolation --no-deps \
+            /tmp/dbus-testing-src
+          dbus-testing --version
+
+      # 本仓无源码声明 XML,静态校验会 SKIP;不传 --strict 让 SKIP 保持非失败
+      - name: 静态契约校验
+        run: dbus-testing check tests/dbus --static --build-dir build-su
+
+      - name: DBus 接口测试
+        run: dbus-testing run tests/dbus --build-dir build-su --report artifacts/
+
+      - name: 上传报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbus-test-report
+          path: artifacts/
+          if-no-files-found: warn

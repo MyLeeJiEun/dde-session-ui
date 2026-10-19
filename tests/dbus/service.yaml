@@ -1,0 +1,61 @@
+# dde-session-ui 的 DBus 接口测试(process 形态)。
+#
+# 本仓是"多小程序"聚合仓:14 个子项目各自是一个独立可执行文件,各自注册
+# 自己的 session 总线服务。选 dde-blackwidget 作为被测物,因为它是本仓
+# 接口面最完整的导出服务(7 个槽 + 1 个状态查询):
+#   org.deepin.dde.BlackScreen1 @ /org/deepin/dde/BlackScreen1
+#   Raise / Quit / setActive(b) / quitDBusService / blackScreenVisible() -> b
+#   / releaseGrabDevices / releaseGrabDevicesHideBlack
+#
+# 离屏要点:窗口本身不需要真实屏幕,offscreen 平台下 registerService 与
+# registerObject 照常成功(实测 Session register service: true)。
+# 程序在 WAYLAND_DISPLAY 非空时会先检查 org.kde.KWin 是否注册,未注册就
+# 直接 return 0 退出 —— 沙箱里把 WAYLAND_DISPLAY 显式置空,避免走这条分支。
+#
+# 生命周期要点(重要):main.cpp 在注册对象后调用 w.setTimer(),默认
+# quitInterval=10000,即**进程启动 10 秒后无条件自退**。用例必须在这个窗口
+# 内跑完;框架 6 例实测 0.01s 级,余量充足。Quit / quitDBusService 会主动
+# 注销服务并退出进程,只能放在用例序列末尾。
+apiVersion: v1
+process: dde-blackwidget
+mode: isolate
+kind: process
+tier: T3
+
+services:
+  - org.deepin.dde.BlackScreen1
+
+binary:
+  search:
+    - ${BUILD_DIR}/dde-blackwidget/dde-blackwidget
+    - ${BUILD_DIR}/bin/dde-blackwidget
+    - /usr/lib/deepin-daemon/dde-blackwidget
+
+args: []
+
+sandbox:
+  home: tmp
+  env:
+    QT_QPA_PLATFORM: offscreen
+    WAYLAND_DISPLAY: ""
+    LANG: C.UTF-8
+    LANGUAGE: en_US
+
+ready:
+  name-owner:
+    - org.deepin.dde.BlackScreen1
+  timeout: 20s
+
+# 本仓**没有**源码声明 XML:BlackScreen1 的契约只存在于
+# dde-blackwidget/src/window.h 的 Q_CLASSINFO("D-Bus Interface", ...) 与
+# 一组 public slots,仓内 xml/ 目录的 17 个 XML 全部是 dtk_add_dbus_interface
+# 生成的**消费方**客户端类(Accounts1/Display1/Notification1 等),不是导出
+# 契约。置空 src-xml-globs 让静态校验如实报 SKIP,而不是拿消费方 XML 去比。
+# 因此 CI 里的 check 不传 --strict(否则 SKIP 会被当失败)。
+src-xml-globs: []
+
+ignore:
+  interfaces:
+    - "org.freedesktop.DBus.*"
+
+teardown: kill

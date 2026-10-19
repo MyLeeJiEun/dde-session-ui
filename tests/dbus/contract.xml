@@ -1,0 +1,17 @@
+<node>
+  <object path="/org/deepin/dde/BlackScreen1">
+    <interface name="org.deepin.dde.BlackScreen1">
+      <method name="Quit"/>
+      <method name="Raise"/>
+      <method name="blackScreenVisible">
+        <arg type="b" direction="out"/>
+      </method>
+      <method name="quitDBusService"/>
+      <method name="releaseGrabDevices"/>
+      <method name="releaseGrabDevicesHideBlack"/>
+      <method name="setActive">
+        <arg name="visible" type="b" direction="in"/>
+      </method>
+    </interface>
+  </object>
+</node>

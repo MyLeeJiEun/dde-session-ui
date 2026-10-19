@@ -1,0 +1,67 @@
+# dde-blackwidget 用例:org.deepin.dde.BlackScreen1 的 7 个槽 + 1 个查询。
+#
+# 顺序敏感:Quit 与 quitDBusService 会注销服务并让进程退出,必须放在最后;
+# 且整轮必须在 main.cpp 的 setTimer(10s) 自退窗口内完成。
+apiVersion: v1
+cases:
+  # ---- 状态查询:无副作用,先跑 ----
+  - name: black-screen-visible-queryable
+    call:
+      object: /org/deepin/dde/BlackScreen1
+      interface: org.deepin.dde.BlackScreen1
+      method: blackScreenVisible
+    expect: { signature: "b" }
+
+  # ---- 窗口操作:Raise 会 grabMouse/grabKeyboard,离屏下应仍成功 ----
+  - name: raise-callable
+    call:
+      object: /org/deepin/dde/BlackScreen1
+      interface: org.deepin.dde.BlackScreen1
+      method: Raise
+
+  # ---- setActive 双向:true 走 Raise 分支,false 走 releaseGrabDevicesHideBlack ----
+  - name: set-active-true
+    call:
+      object: /org/deepin/dde/BlackScreen1
+      interface: org.deepin.dde.BlackScreen1
+      method: setActive
+      args: [true]
+
+  - name: set-active-false
+    call:
+      object: /org/deepin/dde/BlackScreen1
+      interface: org.deepin.dde.BlackScreen1
+      method: setActive
+      args: [false]
+
+  # ---- 释放抓取:可重入,先无抓取时调用也不应报错 ----
+  - name: release-grab-devices-callable
+    call:
+      object: /org/deepin/dde/BlackScreen1
+      interface: org.deepin.dde.BlackScreen1
+      method: releaseGrabDevices
+
+  - name: release-grab-devices-hide-black-callable
+    call:
+      object: /org/deepin/dde/BlackScreen1
+      interface: org.deepin.dde.BlackScreen1
+      method: releaseGrabDevicesHideBlack
+
+  # ---- 错误面:未声明的方法必须被 D-Bus 拒绝 ----
+  - name: unknown-method-rejected
+    call:
+      object: /org/deepin/dde/BlackScreen1
+      interface: org.deepin.dde.BlackScreen1
+      method: NoSuchMethod
+    expect: { error: org.freedesktop.DBus.Error.UnknownMethod }
+
+  # ---- 契约基线 ----
+  - name: contract
+    check-contract: {}
+
+  # ---- 破坏性方法放最后:Quit 内部走 quitDBusService,注销服务并退出 ----
+  - name: quit-callable
+    call:
+      object: /org/deepin/dde/BlackScreen1
+      interface: org.deepin.dde.BlackScreen1
+      method: Quit
